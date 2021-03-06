@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +21,8 @@ type Db struct {
 	Password string `json:"password"`
 }
 
+var defaultDb = &Db{}
+
 type QueryDb struct {
 	DbName string `json:"dbname"`
 	Ip string `json:"ip"`
@@ -28,25 +32,31 @@ type QueryDb struct {
 	Port int `json:"port"`
 }
 
-func DefaultDb(ip string, port int) Db {
-	return Db{
-		Ip: ip,
-		Port: port,
-		DbName: "tlogserver",
-		Username: "cqsjsy",
-		Password: "Syid_dfDwiq123",
-	}
+var defaultQueryDb = &QueryDb{}
+
+const (
+	DbName = "tlogserver"
+	Username = "cqsjsy"
+	Password = "Syid_dfDwiq123"
+)
+
+func (d *Db)SetDb(ip string, port int) *Db {
+	d.Ip = ip
+	d.Port = port
+	d.DbName = DbName
+	d.Username = Username
+	d.Password = Password
+	return d
 }
 
-func DefaultQueryDb(ip string, port int) QueryDb {
-	return QueryDb{
-		DbName: "tlogserver",
-		Ip: ip,
-		LastQueryTime: NowDate(),
-		LastSecondChat: "{}",
-		Password: "Syid_dfDwiq123",
-		Port: port,
-	}
+func (q *QueryDb)SetQueryDb(ip string, port int) *QueryDb {
+	q.Ip = ip
+	q.LastQueryTime = NowDate()
+	q.LastSecondChat = "{}"
+	q.DbName = DbName
+	q.Password = Password
+	q.Port = port
+	return q
 }
 
 func NowDate() string {
@@ -68,23 +78,40 @@ func writeFile(file string, content []byte)  {
 }
 
 func main() {
-	dirpath, err := os.Getwd()
-	fileName := "server_sp.txt"
-	fl, err := os.Open(fileName)
-	if err != nil {
-		fmt.Println(fileName, err)
-		return
+	dirname := "./"
+	infos, _ := ioutil.ReadDir(dirname)
+	var fileName string
+	for _, info := range infos{
+		name := info.Name()
+		if ext := filepath.Ext(name); ext == ".txt" {
+			fileName = name
+		}
 	}
 
-	fmt.Println(NowDate())
+	if fileName == "" {
+		panic("text file not exists")
+	}
+	file, _ := os.Open(fileName)
+	defer file.Close()
 
-	defer fl.Close()
-	var dbBuf []Db
-	var queryDbBuf []QueryDb
+	dbs, queryDbs, err := Read(file)
+	if err != nil {
+		panic(err)
+	}
 
-	rd := bufio.NewReader(fl)
+	err = Write(dbs, queryDbs)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("success")
+}
+
+func Read(file io.Reader) ([]Db, []QueryDb, error) {
+	reader := bufio.NewReader(file)
+	var dbs = []Db{}
+	var queryDbs = []QueryDb{}
 	for  {
-		line, err := rd.ReadString('\n')
+		line, err := reader.ReadString('\n')
 		if nil != err || io.EOF == err {
 			break
 		}
@@ -96,34 +123,32 @@ func main() {
 		ip := arr[2]
 		port, err := strconv.Atoi(strings.Replace(arr[3], "\r\n", "", -1))
 
-		db := DefaultDb(ip, port)
-		queryDb := DefaultQueryDb(ip, port)
+		db := defaultDb.SetDb(ip, port)
+		queryDb := defaultQueryDb.SetQueryDb(ip, port)
 
 		if err != nil {
-			fmt.Println(err)
+			return nil, nil, err
 		}
-		dbBuf = append(dbBuf, db)
-		queryDbBuf = append(queryDbBuf, queryDb)
+		dbs = append(dbs, *db)
+		queryDbs = append(queryDbs, *queryDb)
 	}
+	return dbs, queryDbs, nil
+}
 
-	dbs, err := json.Marshal(dbBuf)
+func Write(dbs []Db, queryDbs []QueryDb) error {
+	jsonDbs, err := json.Marshal(dbs)
 	if err != nil {
-		fmt.Println("parse db json fail")
-		return
+		return err
 	}
 
-	queryDbs, err := json.Marshal(queryDbBuf)
+	jsonQueryDbs, err := json.Marshal(queryDbs)
 	if err != nil {
-		fmt.Println("parse queryDb json fail")
-		return
+		return err
 	}
 
-	fmt.Println(dirpath)
 	dbFile := "output/db.json"
-
 	queryFile := "./output/queryinfo.json"
-
-	writeFile(dbFile, dbs)
-	writeFile(queryFile, queryDbs)
-	fmt.Println("success")
+	writeFile(dbFile, jsonDbs)
+	writeFile(queryFile, jsonQueryDbs)
+	return nil
 }
