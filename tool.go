@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -91,10 +89,7 @@ func main() {
 	if fileName == "" {
 		panic("text file not exists")
 	}
-	file, _ := os.Open(fileName)
-	defer file.Close()
-
-	dbs, queryDbs, err := Read(file)
+	dbs, queryDbs, err := Read(fileName)
 	if err != nil {
 		panic(err)
 	}
@@ -106,23 +101,22 @@ func main() {
 	fmt.Println("success")
 }
 
-func Read(file io.Reader) ([]Db, []QueryDb, error) {
-	reader := bufio.NewReader(file)
+func Read(filename string) ([]Db, []QueryDb, error) {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, nil, err
+	}
 	var dbs = []Db{}
 	var queryDbs = []QueryDb{}
-	for  {
-		line, err := reader.ReadString('\n')
-		if nil != err || io.EOF == err {
-			break
-		}
+
+	for _, line := range strings.Split(string(data), "\r\n") {
+		fmt.Printf("%v \n", line)
 		arr := strings.Split(line, " ")
-		if len(arr) <= 1 {
+		if len(arr) < 4 {
 			continue
 		}
-
 		ip := arr[2]
-		port, err := strconv.Atoi(strings.Replace(arr[3], "\r\n", "", -1))
-
+		port, err := strconv.Atoi(arr[3])
 		db := defaultDb.SetDb(ip, port)
 		queryDb := defaultQueryDb.SetQueryDb(ip, port)
 
